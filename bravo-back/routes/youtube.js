@@ -1,38 +1,62 @@
-import express from 'express';
-import fetch from 'node-fetch';
+import express from "express";
+import fetch from "node-fetch";
 
 const router = express.Router();
 
-// 여러 개의 YouTube API 키 (라운드 로빈 방식)
-const API_KEYS = [
-  process.env.YOUTUBE_API_KEY1,
-  process.env.YOUTUBE_API_KEY2,
-  process.env.YOUTUBE_API_KEY3,
-  process.env.YOUTUBE_API_KEY4,
-  process.env.YOUTUBE_API_KEY5,
-  process.env.YOUTUBE_API_KEY6,
-];
-let apiKeyIndex = 0;
-function getNextApiKey() {
-  const apiKey = API_KEYS[apiKeyIndex];
-  apiKeyIndex = (apiKeyIndex + 1) % API_KEYS.length;
-  return apiKey;
+// ✅ 여러 개의 YouTube API 키 (라운드 로빈 방식)
+const youtubeApiKeys = process.env.YOUTUBE_API_KEYS
+  ? process.env.YOUTUBE_API_KEYS.split(",")
+  : [
+      process.env.YOUTUBE_API_KEY1,
+      process.env.YOUTUBE_API_KEY2,
+      process.env.YOUTUBE_API_KEY3,
+      process.env.YOUTUBE_API_KEY4,
+      process.env.YOUTUBE_API_KEY5,
+      process.env.YOUTUBE_API_KEY6,
+    ].filter(Boolean); // undefined 값 제거
+
+if (!youtubeApiKeys.length) {
+  console.error("❌ YouTube API 키가 설정되지 않았습니다. .env 파일을 확인하세요.");
+  process.exit(1);
 }
 
-// YouTube 검색 엔드포인트
-// URL 예시: GET /api/youtube?track=노래제목&artist=아티스트명
-router.get('/youtube', async (req, res) => {
+let currentApiKeyIndex = 0;
+let currentApiKey = youtubeApiKeys[currentApiKeyIndex];
+
+// ✅ API 키 로테이션 (2분마다 변경)
+function rotateApiKey() {
+  currentApiKeyIndex = (currentApiKeyIndex + 1) % youtubeApiKeys.length;
+  currentApiKey = youtubeApiKeys[currentApiKeyIndex];
+  console.log(`🔄 ${currentApiKeyIndex + 1}번째 YouTube API 키로 변경됨: ${currentApiKey}`);
+}
+setInterval(rotateApiKey, 2 * 60 * 1000); // 2분마다 API 키 변경
+
+// ✅ YouTube 검색 엔드포인트
+// GET /api/youtube/search?track=노래제목&artist=아티스트명
+router.get("/search", async (req, res) => {
   const { track, artist } = req.query;
-  if (!track || !artist) return res.status(400).json({ error: "트랙명과 아티스트명을 입력하세요." });
+  if (!track || !artist) {
+    return res.status(400).json({ error: "트랙명과 아티스트명을 입력하세요." });
+  }
+
+  const searchQuery = `${track} ${artist} official audio`;
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(
+    searchQuery
+  )}&key=${currentApiKey}&maxResults=1`;
+
   try {
-    const searchQuery = `${track} ${artist} official audio`;
-    const apiKey = getNextApiKey();
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(searchQuery)}&key=${apiKey}&maxResults=1`;
-    console.log(`🔍 YouTube 검색 요청 (사용 API 키: ${apiKey})`, url);
+    console.log(`🔍 YouTube 검색 요청 (API 키: ${currentApiKey})`, url);
     const response = await fetch(url);
+    
+    if (!response.ok) {
+      return res.status(response.status).json({ error: "YouTube API 에러 발생" });
+    }
+
     const data = await response.json();
-    if (data.items && data.items.length > 0) {
-      res.json({ videoId: data.items[0].id.videoId });
+    const videoId = data.items?.[0]?.id?.videoId || null;
+
+    if (videoId) {
+      res.json({ videoId });
     } else {
       res.status(404).json({ error: "YouTube 영상 없음" });
     }

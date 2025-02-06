@@ -23,8 +23,10 @@ import spotifyRoutes from './routes/spotify.js';
 import youtubeRoutes from './routes/youtube.js';
 import googleRoutes from './routes/google.js';
 
-app.use('/api', spotifyRoutes);
-app.use('/api', youtubeRoutes);
-app.use('/api', googleRoutes);
+// ✅ API 엔드포인트 명확하게 설정
+app.use('/api/spotify', spotifyRoutes);
+app.use('/api/youtube', youtubeRoutes);
+app.use('/api/google', googleRoutes);
+
 
 app.listen(PORT, () => console.log(`✅ 서버 실행 중: http://localhost:${PORT}`));

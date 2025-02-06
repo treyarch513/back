@@ -17,6 +17,7 @@ if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
   process.exit(1);
 }
 
+// ✅ Spotify 토큰 요청 함수
 async function getSpotifyToken() {
   const currentTime = Date.now();
   if (spotifyToken && currentTime < tokenExpiresAt) {
@@ -54,24 +55,59 @@ async function getSpotifyToken() {
   }
 }
 
-// ✅ Spotify 검색 엔드포인트
+// ✅ Spotify 검색 엔드포인트 (기본 한국 리전)
+// GET /api/spotify/search?q=<검색어>
 router.get("/search", async (req, res) => {
-  const { query } = req.query;
-  if (!query) return res.status(400).json({ error: "검색어를 입력하세요." });
-
+  const query = req.query.q;
+  if (!query) {
+    return res.status(400).json({ error: "Query parameter q is required" });
+  }
   try {
     const token = await getSpotifyToken();
     const response = await fetch(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=40`,
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=20`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Accept-Language": "ko-KR", // 한국 리전 우선
+        },
+      }
+    );
+    if (!response.ok) {
+      return res.status(response.status).json({ error: "Spotify API error" });
+    }
+    const data = await response.json();
+    res.json(data.tracks.items || []);
+  } catch (error) {
+    console.error("❌ Spotify 검색 오류:", error);
+    res.status(500).json({ error: "Spotify 검색 중 오류 발생" });
+  }
+});
+
+// ✅ 특정 트랙 상세 정보 조회 (미국 리전 기본)
+// GET /api/spotify/track?trackId=<트랙ID>&market=US
+router.get("/track", async (req, res) => {
+  const trackId = req.query.trackId;
+  const market = req.query.market || "US"; // 기본 시장은 미국(US)
+  if (!trackId) {
+    return res.status(400).json({ error: "trackId parameter is required" });
+  }
+  try {
+    const token = await getSpotifyToken();
+    const response = await fetch(
+      `https://api.spotify.com/v1/tracks/${trackId}?market=${market}`,
       {
         headers: { Authorization: `Bearer ${token}` },
       }
     );
+    if (!response.ok) {
+      return res.status(response.status).json({ error: "Spotify API error" });
+    }
     const data = await response.json();
-    res.json(data.tracks.items);
+    res.json(data);
   } catch (error) {
-    console.error("❌ Spotify 검색 오류:", error);
-    res.status(500).json({ error: "Spotify 검색 중 오류 발생" });
+    console.error("❌ Spotify 트랙 조회 오류:", error);
+    res.status(500).json({ error: "Spotify 트랙 조회 중 오류 발생" });
   }
 });
 
