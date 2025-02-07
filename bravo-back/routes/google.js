@@ -4,22 +4,18 @@ import jwt from 'jsonwebtoken';
 import querystring from 'querystring';
 import { OAuth2Client } from 'google-auth-library';
 import dotenv from 'dotenv';
+import { User } from '../models/User.js'; // MongoDB User 모델 임포트
 
 dotenv.config();
 
 const router = express.Router();
 
-// 환경변수에서 설정값 가져오기
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/google-callback";
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/google/google-callback";
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_here";
 
-// OAuth2Client 인스턴스 생성
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
-
-// 임시 사용자 DB (실제 환경에서는 DB를 사용하세요)
-const users = [];
 
 /**
  * 구글 로그인 엔드포인트  
@@ -37,7 +33,7 @@ router.get('/google-login', (req, res) => {
 
 /**
  * 구글 로그인 콜백 엔드포인트  
- * 구글에서 받은 code를 이용하여 토큰을 받고, JWT를 발급합니다.
+ * 구글에서 받은 code를 이용하여 토큰을 받고, JWT를 발급하며, MongoDB에 사용자 정보를 저장합니다.
  */
 router.get('/google-callback', async (req, res) => {
   const { code } = req.query;
@@ -71,17 +67,35 @@ router.get('/google-callback', async (req, res) => {
     const payload = ticket.getPayload();
     const email = payload.email;
 
-    // 임시 사용자 DB에 저장
-    let user = users.find((u) => u.email === email);
+    // MongoDB에서 사용자 검색 및 생성/갱신
+    let user = await User.findOne({ email });
+    let jwtToken;
+
     if (!user) {
-      user = { email, name: payload.name, picture: payload.picture };
-      users.push(user);
+      // 새로운 사용자라면 새로 생성 후 JWT 발급
+      jwtToken = jwt.sign({ email, name: payload.name, picture: payload.picture }, JWT_SECRET, { expiresIn: "7d" });
+      user = new User({ email, name: payload.name, picture: payload.picture, jwtToken });
+      await user.save();
+      console.log("✅ 새 사용자 저장됨:", user);
+    } else {
+      // 기존 사용자인 경우, 기존 토큰이 있다면 재사용, 없거나 만료된 경우 새 토큰 발급
+      try {
+        if (user.jwtToken) {
+          // 기존 토큰의 유효성을 검증합니다.
+          jwt.verify(user.jwtToken, JWT_SECRET);
+          jwtToken = user.jwtToken;
+          console.log("✅ 기존 JWT 재사용:", jwtToken);
+        }
+      } catch (err) {
+        // 기존 토큰이 만료되었거나 유효하지 않다면 새 토큰 발급
+        jwtToken = jwt.sign({ email, name: payload.name, picture: payload.picture }, JWT_SECRET, { expiresIn: "7d" });
+        user.jwtToken = jwtToken;
+        await user.save();
+        console.log("✅ 새 JWT 발급 및 업데이트:", jwtToken);
+      }
+      console.log("✅ 기존 사용자 발견:", user);
     }
 
-    // JWT 발급 (7일 만료)
-    const jwtToken = jwt.sign({ email, name: payload.name, picture: payload.picture }, JWT_SECRET, { expiresIn: "7d" });
-    console.log("✅ 발급된 JWT:", jwtToken);
-    
     // 프론트엔드로 리다이렉션 (쿼리 파라미터로 토큰 전달)
     res.redirect(`http://localhost:5173?token=${jwtToken}`);
   } catch (error) {
