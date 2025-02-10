@@ -34,12 +34,12 @@ setInterval(rotateApiKey, 2 * 60 * 1000); // 2분마다 API 키 변경
 // ✅ YouTube 검색 엔드포인트
 // GET /api/youtube/search?track=노래제목&artist=아티스트명
 router.get("/search", async (req, res) => {
-  const { track, artist } = req.query;
-  if (!track || !artist) {
+  const { trackName, artistName } = req.query;
+  if (!trackName || !artistName) {
     return res.status(400).json({ error: "트랙명과 아티스트명을 입력하세요." });
   }
 
-  const searchQuery = `${track} ${artist} official audio`;
+  const searchQuery = `${trackName} ${artistName} official audio`;
   const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(
     searchQuery
   )}&key=${currentApiKey}&maxResults=1`;
