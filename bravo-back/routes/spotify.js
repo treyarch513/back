@@ -69,7 +69,7 @@ router.get("/search", async (req, res) => {
       {
         headers: {
           Authorization: `Bearer ${token}`,
-          "Accept-Language": "ko-KR", // 한국 리전 우선
+          "Accept-Language": "en-EN", // 한국 리전 우선
         },
       }
     );
