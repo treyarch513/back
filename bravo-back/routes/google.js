@@ -1,3 +1,5 @@
+// bravo-back/routes/google.js
+
 import express from 'express';
 import fetch from 'node-fetch';
 import jwt from 'jsonwebtoken';
@@ -12,8 +14,11 @@ const router = express.Router();
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/google/google-callback";
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3001/api/google/google-callback";
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_here";
+
+// 추가: 프론트엔드 URL (.env 파일에 FRONTEND_URL 설정)
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 const client = new OAuth2Client(GOOGLE_CLIENT_ID);
 
@@ -97,7 +102,7 @@ router.get('/google-callback', async (req, res) => {
     }
 
     // 프론트엔드로 리다이렉션 (쿼리 파라미터로 토큰 전달)
-    res.redirect(`http://localhost:5173?token=${jwtToken}`);
+    res.redirect(`${FRONTEND_URL}?token=${jwtToken}`);
   } catch (error) {
     console.error("❌ Google OAuth 로그인 실패:", error);
     res.status(500).json({ error: "Google OAuth 로그인 실패", details: error.toString() });

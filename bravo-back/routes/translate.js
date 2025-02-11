@@ -1,3 +1,6 @@
+// bravo-back/routes/translate.js
+
+
 import express from 'express';
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import dotenv from 'dotenv';
