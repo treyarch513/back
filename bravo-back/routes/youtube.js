@@ -21,7 +21,7 @@ function rotateApiKey() {
     }번째 YouTube API 키 변경됨: ${currentApiKey}`
   );
 }
-setInterval(rotateApiKey, 2 * 60 * 1000);
+setInterval(rotateApiKey, 1 * 60 * 1000);
 
 // GET /api/youtube/search?trackName=...&artistName=...
 router.get("/search", async (req, res) => {

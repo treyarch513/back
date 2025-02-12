@@ -1,3 +1,4 @@
+// /bravo-back/routes/lyrics.js
 import express from 'express';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
@@ -65,7 +66,9 @@ async function fetchLyricsLrcLib(song, artist, album = null, duration = null, re
 
 /**
  * Musixmatch API를 단일 시도로 호출합니다.
- * 404나 오류 발생 시 바로 null 반환합니다.
+ * (우리는 별도의 subtitles 엔드포인트를 사용하지 않습니다.)
+ * 만약 API 응답이 리스트 형태(각 항목에 time 정보가 있는 경우)라면,
+ * 각 항목을 "[mm:ss.xx] text" 형식의 문자열로 변환하여 반환합니다.
  */
 async function fetchLyricsMusixmatch(song, artist, retries = 1) {
   const cleanSong = cleanQueryString(song);
@@ -96,15 +99,21 @@ async function fetchLyricsMusixmatch(song, artist, retries = 1) {
     }
     
     const data = await response.json();
-    if (!data || data.error) {
-      console.warn("⚠️ [백엔드] Musixmatch에서 가사 데이터를 찾지 못했습니다.");
-      return null;
+    // 만약 API 응답이 리스트 형태라면 타임스탬프와 텍스트를 포맷합니다.
+    if (Array.isArray(data) && data.length > 0) {
+      const formatted = data.map(item => {
+        const t = item.time || {};
+        const minutes = t.minutes || 0;
+        const seconds = t.seconds || 0;
+        const hundredths = t.hundredths || 0;
+        // 시간 포맷을 "mm:ss.xx" 형식으로 생성
+        const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
+        return `[${formattedTime}] ${item.text || ""}`;
+      }).join('\n');
+      return formatted;
     }
     
-    if (Array.isArray(data)) {
-      return data.map(line => line.text).join('\n');
-    }
-    
+    // 만약 리스트 형태가 아니라면 기존 방식으로 처리
     const lyrics = data.message?.body?.lyrics?.lyrics_body;
     if (lyrics) {
       return lyrics;
@@ -136,7 +145,7 @@ router.get('/', async (req, res) => {
     await new Promise(res => setTimeout(res, 1000));
   }
 
-  // LRCLIB에서 가사를 찾지 못하면 Musixmatch API 2회 시도
+  // LRCLIB에서 가사를 찾지 못하면 Musixmatch API 2회 시도 (subtitles 엔드포인트 사용 없이 기본 엔드포인트로 호출)
   if (!lyrics) {
     console.warn("⚠️ [백엔드] LRCLIB에서 가사를 찾지 못했습니다. Musixmatch API를 호출합니다.");
     for (let i = 0; i < 2; i++) {
@@ -153,11 +162,40 @@ router.get('/', async (req, res) => {
     });
   }
 
-    // 원본 가사를 백엔드 로그에 출력
-    console.log("📝 [백엔드] 원본 가사:", lyrics);
+  // ─────────────────────────────────────────────
+  // [추가] 타임스탬프가 포함된 가사 문자열을 파싱하여
+  // 백엔드에는 타임스탬프와 텍스트를 분리한 로그를 남기고,
+  // 프론트엔드에는 타임스탬프가 제거된 순수 가사 텍스트만 전달
+  // (양쪽 API 모두 "[mm:ss.xx] text" 형식의 문자열을 반환한다고 가정)
+  if (typeof lyrics !== 'string') {
+    console.error("❌ [백엔드] 가사 데이터 형식이 올바르지 않습니다:", lyrics);
+    return res.status(500).json({
+      error: "가사 데이터 처리 중 오류가 발생했습니다."
+    });
+  }
+  const pattern = /\[(\d{2}:\d{2}\.\d{2})\]\s*(.*)/;
+  const lines = lyrics.trim().split("\n");
+  const result = [];
+  for (let line of lines) {
+    const match = line.match(pattern);
+    if (match) {
+      result.push({ time: match[1], text: match[2] });
+    }
+  }
+  let plainLyrics;
+  if (result.length > 0) {
+    console.log("📝 [백엔드] 파싱된 가사:", result);
+    // 프론트엔드에 보낼 때는 타임스탬프 없이 텍스트만 합칩니다.
+    plainLyrics = result.map(item => item.text).join("\n");
+  } else {
+    plainLyrics = lyrics;
+  }
+  // ─────────────────────────────────────────────
 
-    return res.json({ song, artist, album, duration, lyrics });
-  });
-  
+  // 원본 가사는 백엔드 로그에 출력 (타임스탬프 포함)
+  console.log("📝 [백엔드] 원본 가사:", lyrics);
+
+  return res.json({ song, artist, album, duration, lyrics: plainLyrics });
+});
 
 export default router;
