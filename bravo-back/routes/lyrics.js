@@ -106,14 +106,14 @@ async function fetchLyricsMusixmatch(song, artist, retries = 1) {
         const minutes = t.minutes || 0;
         const seconds = t.seconds || 0;
         const hundredths = t.hundredths || 0;
-        // 시간 포맷을 "mm:ss.xx" 형식으로 생성
+        // "mm:ss.xx" 형식으로 생성
         const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
         return `[${formattedTime}] ${item.text || ""}`;
       }).join('\n');
       return formatted;
     }
     
-    // 만약 리스트 형태가 아니라면 기존 방식으로 처리
+    // 리스트 형태가 아니라면 기존 방식으로 처리
     const lyrics = data.message?.body?.lyrics?.lyrics_body;
     if (lyrics) {
       return lyrics;
@@ -139,18 +139,18 @@ router.get('/', async (req, res) => {
   // LRCLIB API 2회 시도
   for (let i = 0; i < 2; i++) {
     console.log(`📡 [백엔드] LRCLIB API 시도 ${i + 1}번째`);
-    lyrics = await fetchLyricsLrcLib(song, artist, album, duration, 1); // 단일 시도로 호출
+    lyrics = await fetchLyricsLrcLib(song, artist, album, duration, 1);
     if (lyrics) break;
     // 시도 간 1초 대기
     await new Promise(res => setTimeout(res, 1000));
   }
 
-  // LRCLIB에서 가사를 찾지 못하면 Musixmatch API 2회 시도 (subtitles 엔드포인트 사용 없이 기본 엔드포인트로 호출)
+  // LRCLIB에서 찾지 못하면 Musixmatch API 2회 시도
   if (!lyrics) {
     console.warn("⚠️ [백엔드] LRCLIB에서 가사를 찾지 못했습니다. Musixmatch API를 호출합니다.");
     for (let i = 0; i < 2; i++) {
       console.log(`📡 [백엔드] Musixmatch API 시도 ${i + 1}번째`);
-      lyrics = await fetchLyricsMusixmatch(song, artist, 1); // 단일 시도로 호출
+      lyrics = await fetchLyricsMusixmatch(song, artist, 1);
       if (lyrics) break;
       await new Promise(res => setTimeout(res, 1000));
     }
@@ -163,10 +163,9 @@ router.get('/', async (req, res) => {
   }
 
   // ─────────────────────────────────────────────
-  // [추가] 타임스탬프가 포함된 가사 문자열을 파싱하여
-  // 백엔드에는 타임스탬프와 텍스트를 분리한 로그를 남기고,
-  // 프론트엔드에는 타임스탬프가 제거된 순수 가사 텍스트만 전달
-  // (양쪽 API 모두 "[mm:ss.xx] text" 형식의 문자열을 반환한다고 가정)
+  // [추가] 타임스탬프가 포함된 가사 문자열을 파싱하여,
+  // 백엔드 로그에는 타임스탬프와 텍스트 분리 결과를 남기고,
+  // 프론트엔드에는 타임스탬프를 제거한 순수 가사와 파싱 결과(parsedLyrics)를 함께 전달합니다.
   if (typeof lyrics !== 'string') {
     console.error("❌ [백엔드] 가사 데이터 형식이 올바르지 않습니다:", lyrics);
     return res.status(500).json({
@@ -174,7 +173,7 @@ router.get('/', async (req, res) => {
     });
   }
   const pattern = /\[(\d{2}:\d{2}\.\d{2})\]\s*(.*)/;
-  const lines = lyrics.trim().split("\n");
+  const lines = lyrics.split("\n");
   const result = [];
   for (let line of lines) {
     const match = line.match(pattern);
@@ -185,17 +184,22 @@ router.get('/', async (req, res) => {
   let plainLyrics;
   if (result.length > 0) {
     console.log("📝 [백엔드] 파싱된 가사:", result);
-    // 프론트엔드에 보낼 때는 타임스탬프 없이 텍스트만 합칩니다.
+    // 프론트엔드에는 타임스탬프 없이 텍스트만 전달
     plainLyrics = result.map(item => item.text).join("\n");
   } else {
     plainLyrics = lyrics;
   }
   // ─────────────────────────────────────────────
 
-  // 원본 가사는 백엔드 로그에 출력 (타임스탬프 포함)
   console.log("📝 [백엔드] 원본 가사:", lyrics);
-
-  return res.json({ song, artist, album, duration, lyrics: plainLyrics });
+  return res.json({ 
+    song, 
+    artist, 
+    album, 
+    duration, 
+    lyrics: plainLyrics, 
+    parsedLyrics: result.length > 0 ? result : null 
+  });
 });
 
 export default router;
