@@ -178,17 +178,48 @@ async function processTranslation(lyrics) {
   return refinedResult;
 }
 
-// Express POST 요청 핸들러
-router.post('/', async (req, res) => {
+router.post('/', async (req, res) => { //02.13 파파고 번역표기 추가
   const { lyrics } = req.body;
   if (!lyrics) {
-    return res.status(400).json({ error: "영문 가사를 제공하세요." });
+    res.status(400).json({ error: "영문 가사를 제공하세요." });
+    return;
   }
-  const refinedTranslation = await processTranslation(lyrics);
-  if (!refinedTranslation) {
-    return res.status(500).json({ error: "번역 프로세스에 실패했습니다." });
+
+  // SSE 헤더 설정
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();
+
+  try {
+    // 1. Papago 번역 진행 및 결과 전송
+    const papagoResult = await translateWithPapago(lyrics);
+    if (!papagoResult) {
+      res.write(`data: ${JSON.stringify({ stage: 'error', message: 'Papago 번역 실패' })}\n\n`);
+      res.end();
+      return;
+    }
+    res.write(`data: ${JSON.stringify({ stage: 'papago', translation: papagoResult })}\n\n`);
+    
+    // Papago 번역 결과가 클라이언트에 표시되도록 2초 정도 대기
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 2. "번역 보정 진행중..." 메시지 전송
+    res.write(`data: ${JSON.stringify({ stage: 'update', translation: '번역 보정 진행중...' })}\n\n`);
+    
+    // 3. AI 번역(최종 번역) 진행 및 결과 전송
+    const refinedResult = await refineTranslation(lyrics, papagoResult);
+    if (!refinedResult) {
+      res.write(`data: ${JSON.stringify({ stage: 'error', message: 'AI 번역 실패' })}\n\n`);
+      res.end();
+      return;
+    }
+    res.write(`data: ${JSON.stringify({ stage: 'refined', translation: refinedResult })}\n\n`);
+    res.end();
+  } catch (error) {
+    res.write(`data: ${JSON.stringify({ stage: 'error', message: '번역 프로세스에 실패했습니다.' })}\n\n`);
+    res.end();
   }
-  res.json({ translatedLyrics: refinedTranslation });
 });
+
 
 export default router;
