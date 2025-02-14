@@ -1,3 +1,4 @@
+// routes/playlist.js
 import express from 'express';
 import { Playlist } from '../models/playlist.js';
 import { User } from '../models/User.js';
@@ -32,8 +33,8 @@ router.get('/', async (req, res) => {
     if (!user_id) {
       return res.status(400).json({ error: 'User ID is required' });
     }
-    // 현재 user_id에 해당하는 플레이리스트만 조회
-    const playlists = await Playlist.find({ jwtToken: user_id });
+    // 기존에는 jwtToken 필드로 조회하고 있었으나, 이제 user_id 필드로 조회합니다.
+    const playlists = await Playlist.find({ user_id });
     res.status(200).json(playlists);
   } catch (error) {
     console.error('Fetching playlists failed:', error);

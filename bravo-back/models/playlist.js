@@ -1,3 +1,4 @@
+// models/playlist.js
 import mongoose from 'mongoose';
 
 // 새로운 서브 스키마: 각 트랙의 세부 정보를 보관합니다.
